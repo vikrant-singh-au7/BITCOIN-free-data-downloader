@@ -50,6 +50,7 @@ def wait(seconds):
 
 
 def main(enable=False):
+    ROOT.mkdir(parents=True,exist_ok=True)
     if enable:
         FLAG.write_text('yes')
         install_autostart()

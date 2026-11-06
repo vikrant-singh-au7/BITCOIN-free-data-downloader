@@ -22,8 +22,11 @@ jobs:
       - name: Generate checksum
         shell: pwsh
         run: |
-          $checksum = (Get-FileHash dist/Bitcoin-Free-Data-Downloader.exe -Algorithm SHA256).Hash.ToLower()
-          "$checksum  Bitcoin-Free-Data-Downloader.exe" | Out-File dist/SHA256SUMS.txt -Encoding utf8
+          Compress-Archive -Path dist/Bitcoin-Free-Data-Downloader.exe,README.md,LICENSE,RELEASE_NOTES.md,UPDATE.md -DestinationPath dist/BITCOIN-free-data-downloader-Windows.zip
+          Get-ChildItem dist -File | Where-Object { $_.Extension -in '.exe','.zip' } | ForEach-Object {
+            $checksum = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$checksum  $($_.Name)"
+          } | Out-File dist/SHA256SUMS.txt -Encoding utf8
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -37,7 +40,7 @@ jobs:
         run: |
           gh release view $env:GITHUB_REF_NAME
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $env:GITHUB_REF_NAME dist/Bitcoin-Free-Data-Downloader.exe dist/SHA256SUMS.txt --clobber
+            gh release upload $env:GITHUB_REF_NAME dist/Bitcoin-Free-Data-Downloader.exe dist/BITCOIN-free-data-downloader-Windows.zip dist/SHA256SUMS.txt --clobber
           } else {
-            gh release create $env:GITHUB_REF_NAME dist/Bitcoin-Free-Data-Downloader.exe dist/SHA256SUMS.txt --title "BITCOIN free data downloader $env:GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
+            gh release create $env:GITHUB_REF_NAME dist/Bitcoin-Free-Data-Downloader.exe dist/BITCOIN-free-data-downloader-Windows.zip dist/SHA256SUMS.txt --title "BITCOIN free data downloader $env:GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
           }

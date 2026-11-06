@@ -1,9 +1,21 @@
-# BITCOIN free data downloader v1.0.1
+# BITCOIN free data downloader v1.1.0
 
 Created by **Vikrant Singh** for the trading and research community.
 
-Version 1.0.1 preserves custom data-folder paths when the watchdog or Windows
-sign-in recovery launches a new process, keeping resumes attached to the same archive.
+## New: choose your download drive
+
+- First launch asks where to place your data before any download starts.
+- Displays the complete selected path and the drive's free space for confirmation.
+- Remembers your choice for future launches, updates, retries and Windows recovery.
+- Shows the destination and available drive space in the main window.
+- Adds **Change data folder**, available while stopped.
+- Blocks downloads below 2 GiB free and asks before continuing below the suggested
+  60 GiB planning allowance. The final data size can vary.
+- Fixes the GUI's process-launch callback so Update and Export dispatch correctly.
+- Adds a Windows update ZIP with documentation and existing-archive upgrade steps.
+
+Select your **existing archive folder** on upgrade to keep your downloaded data
+and resume without starting a separate archive. See UPDATE.md in the ZIP.
 
 ## Windows download
 
@@ -24,7 +36,8 @@ Click **Update / Resume** to begin downloading BTC option history.
 - Shared request pacing and server-directed rate-limit cooldowns.
 
 The executable is unsigned. `SHA256SUMS.txt` provides its checksum.
-Data is stored under `%LOCALAPPDATA%\BitcoinFreeDataDownloader`.
+Data and logs are stored in **the folder you select**. Only the small folder
+preference is stored under `%LOCALAPPDATA%\BitcoinFreeDataDownloader\settings.json`.
 Use **Stop safely** to pause automatic recovery; **Update / Resume** enables it again.
 Internet and an awake computer are required; shutdowns resume after the next sign-in.
 

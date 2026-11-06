@@ -117,7 +117,7 @@ def api(path, **params):
 
 
 def database():
-    DATA.mkdir(exist_ok=True)
+    DATA.mkdir(parents=True,exist_ok=True)
     db = sqlite3.connect(DATA / 'btc_options.sqlite', timeout=60)
     db.execute('PRAGMA journal_mode=WAL')
     db.executescript('''
@@ -299,6 +299,7 @@ def index_bounds(db):
 
 def run(workers=96, series=('trades','mark','oi')):
     import msvcrt
+    ROOT.mkdir(parents=True,exist_ok=True)
     lock = open(ROOT / 'download.lock', 'a+b')
     lock.seek(0)
     lock.write(b'0')

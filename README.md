@@ -10,8 +10,10 @@ puts only. No futures, trading orders, paid account or API credentials required.
 
 1. Open [Releases](https://github.com/vikrant-singh-au7/BITCOIN-free-data-downloader/releases/latest).
 2. Download **Bitcoin-Free-Data-Downloader.exe** to a permanent folder.
-3. Double-click it and click **Update / Resume**.
-4. Keep the computer awake and online. Closing the window leaves it downloading.
+3. Double-click it. On first launch, **choose the folder/drive where you want your data**.
+4. Review the full destination path and available drive space, then confirm.
+5. Click **Update / Resume** to start downloading.
+6. Keep the computer awake and online. Closing the window leaves it downloading.
 
 Python is not required for the executable. The release includes a SHA-256
 checksum. The Windows executable is unsigned.
@@ -63,7 +65,21 @@ using the server's reset header. Estimates depend on network and API performance
 
 ## Local storage and CSV export
 
-The executable stores data under `%LOCALAPPDATA%/BitcoinFreeDataDownloader`:
+The executable asks where to store the archive on first launch. All data, exports
+and download logs go in **your selected folder**, which is remembered for updates
+and recovery after Windows sign-in. No archive is silently placed on C:.
+
+The small folder-preference file is stored at
+`%LOCALAPPDATA%/BitcoinFreeDataDownloader/settings.json` (it contains only the chosen
+path). The window always shows the archive path and the drive's available space.
+Under 2 GiB free, downloads are blocked/paused. Under the suggested 60 GiB planning
+allowance, the app asks whether to continue; final archive size is not guaranteed.
+
+Use **Change data folder** while stopped to pick another location. Choose the
+original archive folder to resume existing data. Changing the selection does not
+move files: move an archive yourself only while stopped, then select its new folder.
+
+Your selected folder contains:
 
 ```text
 data/btc_options.sqlite       Compressed data and transactional checkpoints
