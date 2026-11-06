@@ -1,0 +1,43 @@
+name: Build Windows release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Test
+        run: python -m unittest -v
+      - name: Install build tools
+        run: python -m pip install -r requirements-build.txt
+      - name: Build executable
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name Bitcoin-Free-Data-Downloader --hidden-import downloader --hidden-import supervisor --hidden-import gui main.py
+      - name: Generate checksum
+        shell: pwsh
+        run: |
+          $checksum = (Get-FileHash dist/Bitcoin-Free-Data-Downloader.exe -Algorithm SHA256).Hash.ToLower()
+          "$checksum  Bitcoin-Free-Data-Downloader.exe" | Out-File dist/SHA256SUMS.txt -Encoding utf8
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bitcoin-Free-Data-Downloader-Windows
+          path: dist/*
+      - name: Publish release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release view $env:GITHUB_REF_NAME
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:GITHUB_REF_NAME dist/Bitcoin-Free-Data-Downloader.exe dist/SHA256SUMS.txt --clobber
+          } else {
+            gh release create $env:GITHUB_REF_NAME dist/Bitcoin-Free-Data-Downloader.exe dist/SHA256SUMS.txt --title "BITCOIN free data downloader $env:GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
+          }
