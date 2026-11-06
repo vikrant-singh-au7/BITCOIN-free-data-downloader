@@ -12,9 +12,9 @@ ROOT.mkdir(parents=True,exist_ok=True)
 
 def command(mode='worker'):
     if FROZEN:
-        return [sys.executable,'--'+mode]
+        return [sys.executable,'--'+mode,'--data-dir',str(ROOT)]
     python = str(Path(sys.executable).with_name('python.exe'))
-    return [python,str(SOURCE/('supervisor.py' if mode=='supervisor' else 'downloader.py'))]
+    return [python,str(SOURCE/'main.py'),'--'+mode,'--data-dir',str(ROOT)]
 
 
 def install_autostart():

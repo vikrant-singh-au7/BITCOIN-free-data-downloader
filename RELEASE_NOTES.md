@@ -1,6 +1,9 @@
-# BITCOIN free data downloader v1.0.0
+# BITCOIN free data downloader v1.0.1
 
 Created by **Vikrant Singh** for the trading and research community.
+
+Version 1.0.1 preserves custom data-folder paths when the watchdog or Windows
+sign-in recovery launches a new process, keeping resumes attached to the same archive.
 
 ## Windows download
 

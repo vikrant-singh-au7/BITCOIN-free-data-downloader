@@ -7,6 +7,13 @@ import downloader as d
 
 
 class ArchiveTests(unittest.TestCase):
+    def test_child_process_command_preserves_archive_folder(self):
+        import runtime
+        for mode in ('worker','supervisor'):
+            args = runtime.command(mode)
+            self.assertIn('--'+mode,args)
+            self.assertEqual(args[args.index('--data-dir')+1],str(runtime.ROOT))
+
     def test_https_connection_reused(self):
         connection = MagicMock()
         response = connection.getresponse.return_value
