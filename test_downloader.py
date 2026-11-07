@@ -7,6 +7,17 @@ import downloader as d
 
 
 class ArchiveTests(unittest.TestCase):
+    def test_compressed_http_response(self):
+        connection = MagicMock()
+        response = connection.getresponse.return_value
+        response.status = 200
+        response.getheader.return_value = 'gzip'
+        response.read.return_value = d.gzip.compress(b'{"success":true,"result":[]}')
+        with patch.object(d,'HTTP_LOCAL',d.threading.local()),patch.object(d,'pace'), \
+             patch.object(d.http.client,'HTTPSConnection',return_value=connection):
+            self.assertTrue(d.http_json(d.BASE+'/history/candles?symbol=test')['success'])
+            self.assertEqual(connection.request.call_args.kwargs['headers']['Accept-Encoding'],'gzip')
+
     def test_child_process_command_preserves_archive_folder(self):
         import runtime
         for mode in ('worker','supervisor'):
@@ -71,6 +82,18 @@ class ArchiveTests(unittest.TestCase):
         self.db.execute('INSERT INTO products VALUES(?,?,?,?)', ('P-BTC-1-020126',0,120,'{}'))
         kinds = [job[1] for job in d.jobs(self.db,1000000,['trades','mark','oi'])]
         self.assertEqual(kinds, sorted(kinds,key=['trades','mark','oi'].index))
+
+    def test_suspended_job_iterator_does_not_pin_wal(self):
+        self.db.execute('INSERT INTO products VALUES(?,?,?,?)',('P-BTC-1-020126',0,120,'{}'))
+        self.db.commit()
+        queue = d.jobs(self.db,1000000,['trades'])
+        job = next(queue)
+        candles = [dict(time=job[2],open=1,high=1,low=1,close=1)]
+        d.save_window(self.db,job,candles,d.zlib.compress(json.dumps(candles).encode()))
+        busy,frames,checkpointed = self.db.execute('PRAGMA wal_checkpoint(PASSIVE)').fetchone()
+        self.assertEqual(busy,0)
+        self.assertEqual(frames,checkpointed)
+        queue.close()
 
     def test_completed_empty_windows_not_downloaded_again(self):
         self.db.execute('INSERT INTO windows VALUES(?,?,?,?,?,?,?)', ('C-BTC-1-010126','trades',0,d.STEP,1,0,b''))

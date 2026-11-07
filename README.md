@@ -58,6 +58,13 @@ The window shows saved totals per dataset, archive size, contracts with data,
 actual date extremes, current request, queued retries, speed and estimated time
 remaining. Date extremes do **not** certify uninterrupted coverage.
 
+Overall completion includes previously saved batches and survives restarts.
+This-run work is shown separately. Speed and time estimates use the recent two
+minutes. Compact metadata indexes keep progress calculations independent of large
+candle payloads; job iteration releases read cursors so the SQLite journal can
+checkpoint normally. On the first launch after upgrading, index preparation may
+take some time for an existing large archive.
+
 The downloader uses 96 workers, persistent HTTPS connections and a shared cap of
 22 requests/second. Delta documents a 20,000-unit quota per five minutes and a
 cost of three units per candle request. HTTP 429 responses pause all workers

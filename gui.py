@@ -133,7 +133,9 @@ def poll():
         total = a.get('candles',0)
         planned = s.get('planned_windows',0)
         saved = s.get('run_windows',0)
-        pct = min(100, saved/planned*100) if planned else 0
+        overall = s.get('overall_windows',0)
+        target = s.get('target_windows',0)
+        pct = min(100,overall/target*100) if target else 0
         progress['value'] = pct
         update_button['state'] = 'disabled' if active else 'normal'
         stop_button['state'] = 'normal' if active else 'disabled'
@@ -150,7 +152,8 @@ def poll():
         for kind in ('trades','mark','oi'):
             info=a.get('series',{}).get(kind,{})
             lines.append(f'  {kind:7s}: {info.get("candles",0):>12,} candles | {info.get("windows",0):,} saved batches')
-        lines += ['',f'This run: {saved:,} / {planned:,} batches ({pct:.2f}%)',
+        lines += ['',f'Overall archive: {overall:,} / {target:,} batches ({pct:.2f}%)',
+                  f'This run: {saved:,} / {planned:,} remaining batches',
                   f'This run: {s.get("run_rows",0):,} candle records received',
                   f'Speed: {s.get("batches_per_second",0):.1f} batches/sec | {s.get("workers",8)} workers',
                   f'Est. remaining: trades {duration(s.get("trades_eta_seconds"))} | all data {duration(s.get("eta_seconds"))}',

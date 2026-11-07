@@ -1,7 +1,7 @@
 """Delta India BTC options archive. Public, read-only APIs only."""
 import argparse
 import concurrent.futures as futures
-from collections import Counter
+from collections import Counter,deque
 import csv
 import datetime as dt
 import gzip
@@ -61,9 +61,12 @@ def http_json(url):
         HTTP_LOCAL.connection = connection
     try:
         connection.request('GET', parsed.path + '?' + parsed.query,
-                           headers={'User-Agent':'BTCOptionsArchive/2.0','Accept':'application/json'})
+                           headers={'User-Agent':'BTCOptionsArchive/2.0','Accept':'application/json',
+                                    'Accept-Encoding':'gzip'})
         response = connection.getresponse()
         body = response.read()
+        if response.getheader('Content-Encoding') == 'gzip':
+            body = gzip.decompress(body)
         if response.status >= 400:
             raise urllib.error.HTTPError(url,response.status,response.reason,response.headers,io.BytesIO(body))
         return json.loads(body)
@@ -131,6 +134,10 @@ def database():
     CREATE TABLE IF NOT EXISTS snapshots(time INTEGER PRIMARY KEY, payload BLOB);
     CREATE TABLE IF NOT EXISTS window_bounds(symbol TEXT,series TEXT,start INTEGER,
       first INTEGER,last INTEGER,PRIMARY KEY(symbol,series,start));
+    CREATE INDEX IF NOT EXISTS windows_metadata
+      ON windows(symbol,series,start,end,checked,rows);
+    CREATE INDEX IF NOT EXISTS bounds_first ON window_bounds(first);
+    CREATE INDEX IF NOT EXISTS bounds_last ON window_bounds(last);
     ''')
     return db
 
@@ -215,8 +222,11 @@ def discover(db):
 def jobs_for_series(db, now, series):
     # Window start is anchored to listing time, independent of the run date.
     # Windows are atomic: failed/absent/partly downloaded windows stay eligible.
-    for symbol, launch, expiry in db.execute('SELECT symbol,launch,expiry FROM products '
-                                            'ORDER BY (expiry>?) ASC,expiry DESC,symbol', (now,)):
+    # Materialise the small contract list. Holding this cursor while yielding
+    # hundreds of thousands of jobs pins the WAL and prevents checkpointing.
+    products = db.execute('SELECT symbol,launch,expiry FROM products '
+                          'ORDER BY (expiry>?) ASC,expiry DESC,symbol', (now,)).fetchall()
+    for symbol, launch, expiry in products:
         end = min(now, expiry + 60)
         for kind in series:
             done = {r[0]: r[1:] for r in db.execute(
@@ -276,21 +286,24 @@ def save_window(db, job, candles, payload):
 
 def archive_stats(db):
     result = {'series': {}}
-    for kind,n,rows in db.execute('SELECT series,COUNT(*),SUM(rows) FROM windows GROUP BY series'):
+    for kind,n,rows in db.execute('SELECT series,COUNT(*),SUM(rows) FROM windows INDEXED BY windows_metadata GROUP BY series'):
         result['series'][kind] = {'windows': n, 'candles': rows or 0}
     result['candles'] = sum(s['candles'] for s in result['series'].values())
     result['windows'] = sum(s['windows'] for s in result['series'].values())
-    result['contracts_with_data'] = db.execute('SELECT COUNT(DISTINCT symbol) FROM windows WHERE rows>0').fetchone()[0]
+    result['contracts_with_data'] = db.execute('SELECT COUNT(DISTINCT symbol) FROM windows INDEXED BY windows_metadata WHERE rows>0').fetchone()[0]
     result['failures'] = db.execute('SELECT COUNT(*) FROM failures').fetchone()[0]
-    result['first'],result['last'] = db.execute('SELECT MIN(first),MAX(last) FROM window_bounds').fetchone()
+    result['first'],result['last'] = db.execute('SELECT (SELECT MIN(first) FROM window_bounds),'
+                                              '(SELECT MAX(last) FROM window_bounds)').fetchone()
     result['bytes'] = sum(p.stat().st_size for p in DATA.glob('btc_options.sqlite*'))
     return result
 
 
 def index_bounds(db):
-    pending = db.execute('SELECT w.symbol,w.series,w.start,w.payload FROM windows w LEFT JOIN window_bounds b '
+    pending = db.execute('SELECT w.symbol,w.series,w.start FROM windows w LEFT JOIN window_bounds b '
                          'ON w.symbol=b.symbol AND w.series=b.series AND w.start=b.start WHERE b.symbol IS NULL').fetchall()
-    for symbol,kind,start,payload in pending:
+    for symbol,kind,start in pending:
+        payload = db.execute('SELECT payload FROM windows WHERE symbol=? AND series=? AND start=?',
+                             (symbol,kind,start)).fetchone()[0]
         times = [int(c['time']) for c in json.loads(zlib.decompress(payload))]
         db.execute('INSERT OR REPLACE INTO window_bounds VALUES(?,?,?,?,?)',
                    (symbol,kind,start,min(times) if times else None,max(times) if times else None))
@@ -313,6 +326,7 @@ def run(workers=96, series=('trades','mark','oi')):
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s',
                         handlers=[logging.FileHandler(ROOT/'download.log', encoding='utf-8')]+([logging.StreamHandler()] if __import__('sys').stderr else []))
     (ROOT / 'stop.request').unlink(missing_ok=True)
+    status(phase='Preparing archive indexes',pid=os.getpid(),running=True,error=None)
     db = database()
     status(phase='Starting', pid=os.getpid(), running=True, error=None, run_windows=0, run_rows=0,
            planned_windows=0,run_failures=0,current_contract=None,current_series=None,current_start=None,
@@ -332,11 +346,16 @@ def run(workers=96, series=('trades','mark','oi')):
         queue = iter(jobs(db, now, series))
         by_series = Counter(job[1] for job in jobs(db, now, series))
         planned = sum(by_series.values())
-        status(planned_windows=planned,planned_by_series=dict(by_series))
+        target_windows = sum(max(0,(min(now,expiry+60)-launch+STEP-1)//STEP)*len(series)
+                             for launch,expiry in db.execute('SELECT launch,expiry FROM products').fetchall())
+        baseline_complete = target_windows-planned
+        status(planned_windows=planned,planned_by_series=dict(by_series),target_windows=target_windows,
+               overall_windows=baseline_complete)
         logging.info('%s history windows to download', planned)
         completed = rows = failed = 0
         completed_by_series = Counter()
         work_started = time.monotonic()
+        speed_samples = deque([(work_started,0)])
         last_progress = 0
         last_totals = 0
         last_status = 0
@@ -368,10 +387,15 @@ def run(workers=96, series=('trades','mark','oi')):
                     if time.time()-last_totals >= 30:
                         totals = archive_stats(db)
                         last_totals = time.time()
-                    speed = completed/max(time.monotonic()-work_started,1)
+                    sample_time = time.monotonic()
+                    speed_samples.append((sample_time,completed))
+                    while len(speed_samples)>2 and speed_samples[1][0]<sample_time-120:
+                        speed_samples.popleft()
+                    speed = (completed-speed_samples[0][1])/max(sample_time-speed_samples[0][0],1)
                     status(phase='Downloading' if not STOP.is_set() else 'Stopping safely',
                            archive=totals, pending_requests=len(pending),batches_per_second=round(speed,2),
                            queued_retries=len(retry_heap),
+                           overall_windows=baseline_complete+completed,
                            eta_seconds=round((planned-completed)/speed) if speed else None,
                            trades_eta_seconds=round(max(0,by_series['trades']-completed_by_series['trades'])/speed) if speed else None,
                            current_contract=active[0] if active else None,
@@ -416,7 +440,7 @@ def run(workers=96, series=('trades','mark','oi')):
                                run_failures=failed, cutoff_utc=utc(now))
                         last_status = time.time()
         report(db)
-        status(archive=archive_stats(db))
+        status(archive=archive_stats(db),overall_windows=baseline_complete+completed)
         failures = db.execute('SELECT COUNT(*) FROM failures').fetchone()[0]
         status(phase='Stopped; click Update to resume' if STOP.is_set() else
                ('Finished with failures; click Update to retry' if failures else 'Up to date'), running=False)

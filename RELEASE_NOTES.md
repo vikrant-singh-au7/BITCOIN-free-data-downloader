@@ -1,6 +1,20 @@
-# BITCOIN free data downloader v1.1.0
+# BITCOIN free data downloader v1.1.1
 
 Created by **Vikrant Singh** for the trading and research community.
+
+## Large-archive performance fixes
+
+- Uses compact covering indexes for progress totals instead of repeatedly scanning
+  candle payload storage as the archive grows.
+- Releases contract-list read cursors before downloading, allowing SQLite journal
+  checkpoints to run normally rather than accumulating an oversized journal.
+- Shows overall archive completion across restarts, separately from this-run work.
+- Calculates throughput and remaining-time estimates from the recent two minutes.
+- Adds a regression test proving that a suspended job iterator does not pin the journal.
+- Requests compressed API responses to reduce network transfer while retaining
+  the same one-minute candles and all saved data fields.
+
+All saved checkpoints and candle data are retained on upgrade.
 
 ## New: choose your download drive
 

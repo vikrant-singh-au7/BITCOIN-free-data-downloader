@@ -1,11 +1,11 @@
-# Updating to v1.1.0
+# Updating to v1.1.1
 
 Created by Vikrant Singh.
 
 1. In the old application, click **Stop safely** and wait for the downloader to stop.
 2. Close the old progress window. Keep your existing data folder and database.
 3. Download the new EXE or extract the Windows update ZIP to a permanent program folder.
-4. Launch the new EXE. On first launch it asks where to store data.
+4. Launch the new EXE. A previously saved folder is remembered; otherwise it asks where to store data.
 5. **Select your existing archive folder** to resume it. This is the folder containing
    the `data` directory and `status.json`, not the `data` directory itself.
 6. Confirm the destination and free-space information, then click **Update / Resume**.
